@@ -83,8 +83,13 @@
 4. 點擊 **部署**
 5. 複製 **部署 ID** 和 **Web 應用程式 URL**，格式如下：
 AKfycbxY6FHPPLQHIHiAh9faqyqaZkSf9ZsY2g_FXUHJQawN9WQhdkZm0EyLZhACn1YYjGEsSA
+AKfycbypGH1G53myH0dre8h3NES_Xlm8tRHri1JTw_pC5AoIqHgyUZb5NVyzuBhj10wBOLOoIg
 
 https://script.google.com/macros/s/AKfycbxY6FHPPLQHIHiAh9faqyqaZkSf9ZsY2g_FXUHJQawN9WQhdkZm0EyLZhACn1YYjGEsSA/exec
+
+https://script.google.com/macros/s/AKfycbypGH1G53myH0dre8h3NES_Xlm8tRHri1JTw_pC5AoIqHgyUZb5NVyzuBhj10wBOLOoIg/exec
+
+
    ```
    https://script.google.com/macros/d/{DEPLOYMENT_ID}/usercontent
    ```

@@ -167,6 +167,11 @@ function generateOptionsFromAI(word) {
   const geminiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
   const openaiKey = PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY');
   
+  // 添加這三行調試
+  Logger.log('DEBUG: geminiKey = ' + (geminiKey ? '存在' : '不存在'));
+  Logger.log('DEBUG: geminiKey 值 = ' + geminiKey);
+  Logger.log('DEBUG: 所有 Properties = ' + JSON.stringify(PropertiesService.getScriptProperties().getProperties()));
+  
   // 優先嘗試 Gemini (免費)
   if (geminiKey) {
     const geminiResult = callGeminiAPI(word, geminiKey);
@@ -189,19 +194,23 @@ function generateOptionsFromAI(word) {
  */
 function callGeminiAPI(word, apiKey) {
   try {
-    // 嘗試不同的 API 端點和模型組合
+    // 嘗試不同的 API 端點和模型組合（根據最新 Google API 文檔）
     const endpoints = [
       {
-        url: `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent?key=${apiKey}`,
-        model: 'gemini-1.5-pro (v1)'
+        url: `https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        model: 'gemini-2.0-flash (v1)'
+      },
+      {
+        url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        model: 'gemini-1.5-flash (v1beta)'
+      },
+      {
+        url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`,
+        model: 'gemini-1.5-pro (v1beta)'
       },
       {
         url: `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
         model: 'gemini-1.5-flash (v1)'
-      },
-      {
-        url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
-        model: 'gemini-pro (v1beta)'
       }
     ];
     
@@ -233,6 +242,12 @@ function callGeminiAPI(word, apiKey) {
         const responseCode = response.getResponseCode();
         const responseText = response.getContentText();
         
+        // 詳細調試日誌
+        Logger.log(`🔍 ${endpoint.model} - HTTP ${responseCode}`);
+        if (responseCode !== 200) {
+          Logger.log(`   錯誤內容: ${responseText.substring(0, 200)}`);
+        }
+        
         if (responseCode === 200) {
           const result = JSON.parse(responseText);
           if (result.candidates && result.candidates[0] && result.candidates[0].content && result.candidates[0].content.parts) {
@@ -248,7 +263,7 @@ function callGeminiAPI(word, apiKey) {
           }
         }
       } catch (e) {
-        Logger.log(`端點 ${endpoint.model} 失敗: ${e}`);
+        Logger.log(`端點 ${endpoint.model} 異常: ${e}`);
       }
     }
     
@@ -411,26 +426,12 @@ function logResult(id, isCorrect, timeTaken) {
 // 初始化工具函數
 // ============================================
 
-/**
- * 本地備用選項 (當 AI API 失敗時使用)
- * 可以稍後透過 updateVocabularyOptions() 函數更新為 AI 生成的選項
- */
-const FALLBACK_OPTIONS = {
-  'Ubiquitous': { correct: '無所不在的', wrong: ['稀有的', '昂貴的', '美味的'] },
-  'Ephemeral': { correct: '短暫的', wrong: ['永恆的', '固定的', '堅實的'] },
-  'Pragmatic': { correct: '實用的', wrong: ['理想的', '浪漫的', '抽象的'] },
-  'Eloquent': { correct: '雄辯的', wrong: ['沉默的', '啞巴的', '簡潔的'] },
-  'Serendipity': { correct: '幸運巧合', wrong: ['悲傷', '計劃', '偶然'] },
-  'Melancholy': { correct: '憂鬱的', wrong: ['快樂的', '興奮的', '平靜的'] },
-  'Tenacious': { correct: '頑強的', wrong: ['軟弱的', '放棄的', '靈活的'] },
-  'Enigmatic': { correct: '神秘的', wrong: ['清楚的', '明顯的', '簡單的'] },
-  'Altruistic': { correct: '利他的', wrong: ['自私的', '貪婪的', '冷漠的'] },
-  'Juxtapose': { correct: '並列對比', wrong: ['分離', '混合', '隱藏'] }
-};
+// 無備用選項 - API 失敗時留空，待 API 可用時再生成
 
 /**
  * 首次設定：建立工作表結構並預生成所有選項
- * 在 GAS 編輯器中手動執行一次
+ * 實現速率限制：每分鐘 60 次 API 呼叫
+ * 在 GAS 編輯器中手動執行一次（或多次，會自動跳過已完成的單字）
  */
 function initializeSpreadsheet() {
   const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -440,8 +441,11 @@ function initializeSpreadsheet() {
   if (!vocabSheet) {
     vocabSheet = spreadsheet.insertSheet(SHEET_VOCABULARY, 0);
   }
-  vocabSheet.clear();
-  vocabSheet.appendRow(['ID', 'Word', 'Options_Cache', 'Weight', 'Last_Reviewed']);
+  
+  // 如果工作表為空，初始化標題行
+  if (vocabSheet.getLastRow() === 0) {
+    vocabSheet.appendRow(['ID', 'Word', 'Options_Cache', 'Weight', 'Last_Reviewed']);
+  }
   
   // 示例單字清單
   const words = [
@@ -457,35 +461,105 @@ function initializeSpreadsheet() {
     { id: '10', word: 'Juxtapose' }
   ];
   
-  // 為每個單字預生成選項並保存
-  Logger.log('開始預生成選項...');
+  // 速率限制配置
+  const RATE_LIMIT_PER_MINUTE = 60;
+  const MS_PER_MINUTE = 60000;
+  const MS_BETWEEN_REQUESTS = MS_PER_MINUTE / RATE_LIMIT_PER_MINUTE; // 1000ms
+  
+  Logger.log('====================================');
+  Logger.log('開始預生成選項 (速率限制: 每分鐘 60 次)');
+  Logger.log('====================================');
+  
   let generatedCount = 0;
   let fallbackCount = 0;
+  let skippedCount = 0;
+  let requestCount = 0;
+  const startTime = Date.now();
   
+  // 獲取現有數據以檢查哪些單字已經完成
+  const existingData = vocabSheet.getDataRange().getValues();
+  const completedWords = new Set();
+  
+  for (let i = 1; i < existingData.length; i++) {
+    const options = existingData[i][2];
+    if (options && isValidOptions(options)) {
+      completedWords.add(existingData[i][1]);
+    }
+  }
+  
+  // 處理每個單字
   for (const item of words) {
+    // 檢查該單字是否已完成
+    if (completedWords.has(item.word)) {
+      Logger.log(`⏭️  ${item.word} 已完成，跳過`);
+      skippedCount++;
+      continue;
+    }
+    
+    // 計算實際耗時和預期耗時，以確保遵守速率限制
+    const elapsed = Date.now() - startTime;
+    const expectedTime = (requestCount + 1) * MS_BETWEEN_REQUESTS;
+    
+    if (elapsed < expectedTime) {
+      const waitTime = expectedTime - elapsed;
+      Logger.log(`⏳ 等待 ${(waitTime/1000).toFixed(2)}s 以遵守速率限制 (每分鐘 ${RATE_LIMIT_PER_MINUTE} 次)...`);
+      Utilities.sleep(waitTime);
+    }
+    
+    requestCount++;
+    const progress = `[${requestCount}/10]`;
+    Logger.log(`📝 ${progress} 嘗試生成 ${item.word} 的選項...`);
+    
     let options = generateOptionsFromAI(item.word);
     
-    // 如果 AI 失敗，使用本地備用選項
-    if (!options) {
-      options = FALLBACK_OPTIONS[item.word];
-      fallbackCount++;
-      Logger.log(`⚠️ ${item.word} 使用本地備用選項`);
-    }
-    
     if (options) {
-      vocabSheet.appendRow([
-        item.id, 
-        item.word, 
-        JSON.stringify(options),  // 立即保存選項快取
-        '100', 
-        ''
-      ]);
+      // 尋找該單字在工作表中的位置，如果不存在則添加
+      let found = false;
+      for (let i = 1; i < existingData.length; i++) {
+        if (existingData[i][1] === item.word) {
+          // 更新現有行
+          vocabSheet.getRange(i + 1, 3).setValue(JSON.stringify(options));
+          found = true;
+          break;
+        }
+      }
+      
+      if (!found) {
+        // 新增行
+        vocabSheet.appendRow([
+          item.id, 
+          item.word, 
+          JSON.stringify(options),
+          '100', 
+          ''
+        ]);
+      }
+      
       generatedCount++;
-      Logger.log(`✅ 已處理 ${item.word}`);
+      Logger.log(`   ✅ 成功！`);
+    } else {
+      // API 失敗 - 留空，待稍後重試
+      Logger.log(`   ⏳ API 暫時無法取得，留空待稍後重試`);
+      
+      // 確保該單字至少在工作表中有一行（即使選項為空）
+      let found = false;
+      for (let i = 1; i < existingData.length; i++) {
+        if (existingData[i][1] === item.word) {
+          found = true;
+          break;
+        }
+      }
+      
+      if (!found) {
+        vocabSheet.appendRow([
+          item.id, 
+          item.word, 
+          '',  // 選項留空
+          '100', 
+          ''
+        ]);
+      }
     }
-    
-    // 每個 API 呼叫間隔 1 秒，避免超過速率限制
-    Utilities.sleep(1000);
   }
   
   // 建立 Logs 工作表
@@ -493,13 +567,19 @@ function initializeSpreadsheet() {
   if (!logsSheet) {
     logsSheet = spreadsheet.insertSheet(SHEET_LOGS, 1);
   }
-  logsSheet.clear();
-  logsSheet.appendRow(['Timestamp', 'Word_ID', 'Word', 'Event', 'Time_Taken', 'Result']);
+  if (logsSheet.getLastRow() === 0) {
+    logsSheet.appendRow(['Timestamp', 'Word_ID', 'Word', 'Event', 'Time_Taken', 'Result']);
+  }
   
-  Logger.log(`✅ Spreadsheet 初始化完成！`);
-  Logger.log(`   - 成功生成: ${generatedCount - fallbackCount} 個`);
-  Logger.log(`   - 使用備用: ${fallbackCount} 個`);
-  Logger.log(`   - 總計: ${generatedCount}/${words.length} 個單字`);
+  const totalTime = (Date.now() - startTime) / 1000;
+  
+  Logger.log('====================================');
+  Logger.log(`✅ 初始化完成！ (耗時 ${totalTime.toFixed(2)} 秒)`);
+  Logger.log(`   - 成功生成: ${generatedCount} 個`);
+  Logger.log(`   - 跳過已完成: ${skippedCount} 個`);
+  Logger.log(`   - 失敗(留空): ${words.length - generatedCount - skippedCount} 個`);
+  Logger.log(`   - 總計: ${generatedCount + skippedCount}/${words.length} 個單字`);
+  Logger.log('====================================');
 }
 
 /**
