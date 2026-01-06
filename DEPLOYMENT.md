@@ -33,18 +33,26 @@
 
 ### 步驟 3: 設定 API 密鑰
 
-#### 選項 A: 使用 OpenAI API
+#### 推薦：使用 Google Gemini API (免費)
+
+1. 前往 [Google AI Studio](https://makersuite.google.com/app/apikey) 取得 API Key
+2. 在 GAS 編輯器中，選擇 **專案設定** → **指令碼屬性**
+3. 新增以下屬性：
+   - **屬性**: `GEMINI_API_KEY`
+   - **值**: 貼上您的 Google Gemini API Key
+4. **優勢**:
+   - ✅ 完全免費 (每分鐘 60 次)
+   - ✅ 無需付費
+   - ✅ 代碼已內置支援
+
+#### 選項 B: 使用 OpenAI API (付費)
 
 1. 前往 [OpenAI API](https://platform.openai.com/account/api-keys) 取得 API Key
 2. 在 GAS 編輯器中，選擇 **專案設定** → **指令碼屬性**
 3. 新增以下屬性：
    - **屬性**: `OPENAI_API_KEY`
    - **值**: 貼上您的 OpenAI API Key
-
-#### 選項 B: 使用 Google Gemini API
-
-1. 前往 [Google AI Studio](https://makersuite.google.com/app/apikey) 取得 API Key
-2. 新增屬性 `GEMINI_API_KEY` (需要自行修改程式碼以支援 Gemini)
+4. **成本**: 約 $0.002 / 1K tokens (~$100/月 for 50,000 queries)
 
 ### 步驟 4: 初始化試算表
 
@@ -62,6 +70,9 @@
    - **誰可以存取**: 選擇 **我本人** (個人使用) 或 **任何人** (如果要分享)
 4. 點擊 **部署**
 5. 複製 **部署 ID** 和 **Web 應用程式 URL**，格式如下：
+AKfycbxY6FHPPLQHIHiAh9faqyqaZkSf9ZsY2g_FXUHJQawN9WQhdkZm0EyLZhACn1YYjGEsSA
+
+https://script.google.com/macros/s/AKfycbxY6FHPPLQHIHiAh9faqyqaZkSf9ZsY2g_FXUHJQawN9WQhdkZm0EyLZhACn1YYjGEsSA/exec
    ```
    https://script.google.com/macros/d/{DEPLOYMENT_ID}/usercontent
    ```
@@ -279,12 +290,18 @@ if (timeTaken < 3000) {
 |------|---------|---------|
 | Google Sheets | 無限制 | 無 |
 | Google Apps Script | 每月 13.6 GB | 按使用量計費 |
+| **Google Gemini API** | **✅ 每分鐘 60 次** | **無 (完全免費)** |
 | OpenAI API | 無 | ~$0.002 / 1K tokens |
 | GitHub Pages | 無限制 | 無 |
 
-**每月成本估算 (50,000 次查詢):**
-- 約 50,000 × $0.002 = $100 / 月 (OpenAI)
-- 或可選擇使用 Google Gemini API (目前免費)
+**建議方案 (完全免費):**
+- 使用 Google Gemini API (每分鐘 60 次免費)
+- 適合個人和中小型使用
+- 無需付費
+
+**每月成本估算:**
+- **使用 Gemini**: $0 (完全免費)
+- **使用 OpenAI**: 約 50,000 × $0.002 = $100 / 月
 
 ---
 

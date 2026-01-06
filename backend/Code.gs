@@ -10,7 +10,7 @@
 // ============================================
 // 配置
 // ============================================
-const SPREADSHEET_ID = 'YOUR_SPREADSHEET_ID'; // 需要設定
+const SPREADSHEET_ID = '17Rb9ckpztftDdeveZOLgYBHIJpDXKQlgNDTwRyPwZsI'; // 需要設定
 const SHEET_VOCABULARY = 'Vocabulary';
 const SHEET_LOGS = 'Logs';
 
@@ -143,18 +143,82 @@ function weightedRandomSelection(vocabulary) {
 
 /**
  * 從 AI API 生成選項
+ * 優先使用免費的 Google Gemini API，如無法使用則改用 OpenAI
  */
 function generateOptionsFromAI(word) {
-  const apiKey = PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY') ||
-                 PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  const geminiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  const openaiKey = PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY');
   
-  if (!apiKey) {
-    Logger.log('Warning: AI API Key not configured');
-    return null;
+  // 優先嘗試 Gemini (免費)
+  if (geminiKey) {
+    const geminiResult = callGeminiAPI(word, geminiKey);
+    if (geminiResult) return geminiResult;
   }
   
+  // 次選 OpenAI
+  if (openaiKey) {
+    const openaiResult = callOpenAIAPI(word, openaiKey);
+    if (openaiResult) return openaiResult;
+  }
+  
+  Logger.log('Warning: No AI API Key configured. Please set GEMINI_API_KEY or OPENAI_API_KEY in Script Properties.');
+  return null;
+}
+
+/**
+ * 呼叫 Google Gemini API (免費)
+ */
+function callGeminiAPI(word, apiKey) {
   try {
-    // 使用 OpenAI 或 Gemini，這裡以 OpenAI 為例
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    
+    const payload = {
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              text: `Generate a JSON object for the English word '${word}'. It must contain one 'correct' Chinese meaning and an array of three 'wrong' Chinese meanings that are plausible but incorrect. Format: {"correct": "...", "wrong": ["...", "...", "..."]} Only return JSON, no other text.`
+            }
+          ]
+        }
+      ]
+    };
+    
+    const options = {
+      method: 'post',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    };
+    
+    const response = UrlFetchApp.fetch(url, options);
+    const result = JSON.parse(response.getContentText());
+    
+    if (response.getResponseCode() === 200 && result.candidates && result.candidates[0]) {
+      const content = result.candidates[0].content.parts[0].text;
+      // 提取 JSON (可能在文本中)
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+    } else {
+      Logger.log('Gemini API Error: ' + response.getContentText());
+    }
+  } catch (error) {
+    Logger.log('Error calling Gemini API: ' + error);
+  }
+  
+  return null;
+}
+
+/**
+ * 呼叫 OpenAI API
+ */
+function callOpenAIAPI(word, apiKey) {
+  try {
     const url = 'https://api.openai.com/v1/chat/completions';
     
     const payload = {
@@ -162,11 +226,11 @@ function generateOptionsFromAI(word) {
       messages: [
         {
           role: 'system',
-          content: 'You are a helpful assistant that generates Chinese translations for English words.'
+          content: 'You are a helpful assistant that generates Chinese translations for English words. Always respond with ONLY valid JSON.'
         },
         {
           role: 'user',
-          content: `Generate a JSON object for the English word '${word}'. It must contain one 'correct' Chinese meaning and an array of three 'wrong' Chinese meanings that are plausible but incorrect. Format: {"correct": "...", "wrong": ["...", "...", "..."]} Only return JSON.`
+          content: `Generate a JSON object for the English word '${word}'. It must contain one 'correct' Chinese meaning and an array of three 'wrong' Chinese meanings. Format: {"correct": "...", "wrong": ["...", "...", "..."]} Only return JSON.`
         }
       ],
       temperature: 0.7,
@@ -186,25 +250,20 @@ function generateOptionsFromAI(word) {
     const response = UrlFetchApp.fetch(url, options);
     const result = JSON.parse(response.getContentText());
     
-    if (response.getResponseCode() === 200) {
-      // 解析 AI 回應
+    if (response.getResponseCode() === 200 && result.choices && result.choices[0]) {
       const content = result.choices[0].message.content;
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         return JSON.parse(jsonMatch[0]);
       }
     } else {
-      Logger.log('AI API Error: ' + response.getContentText());
+      Logger.log('OpenAI API Error: ' + response.getContentText());
     }
   } catch (error) {
-    Logger.log('Error calling AI API: ' + error);
+    Logger.log('Error calling OpenAI API: ' + error);
   }
   
-  // 如果 AI 失敗，返回示例（開發用）
-  return {
-    correct: '已知的、熟悉的',
-    wrong: ['陌生的', '外來的', '稀有的']
-  };
+  return null;
 }
 
 // ============================================
