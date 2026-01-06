@@ -43,12 +43,16 @@ class QuizApp {
         this.setupEventListeners();
         this.updateStats();
         
-        // 如果已配置 GAS URL，開始載入題目
-        if (this.gasUrl) {
-            this.loadQuestion();
-        } else {
-            this.showModal();
-        }
+        // 延遲 500ms 確保 DOM 完全加載
+        setTimeout(() => {
+            // 如果已配置 GAS URL，開始載入題目
+            if (this.gasUrl) {
+                this.loadQuestion();
+            } else {
+                // 首次使用，自動打開設定
+                this.showModal();
+            }
+        }, 500);
     }
     
     setupEventListeners() {

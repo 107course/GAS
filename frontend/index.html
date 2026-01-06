@@ -64,16 +64,34 @@
         <div id="settingsModal" class="modal">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h2>設定</h2>
+                    <h2>⚙️ 初始設定</h2>
                     <button class="close-btn">&times;</button>
                 </div>
                 <div class="modal-body">
+                    <div class="setup-instruction">
+                        <h3>首次使用步驟：</h3>
+                        <ol>
+                            <li>部署 Google Apps Script 後端 (詳見 GitHub DEPLOYMENT.md)</li>
+                            <li>複製 GAS Web App URL</li>
+                            <li>貼到下方輸入框</li>
+                            <li>點擊「儲存設定」</li>
+                        </ol>
+                    </div>
+                    
+                    <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;">
+                    
                     <label>
-                        <span>GAS Web App URL:</span>
-                        <input type="text" id="gasUrl" placeholder="https://script.google.com/...">
+                        <strong>🔗 GAS Web App URL:</strong>
+                        <input type="text" id="gasUrl" placeholder="https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec">
                     </label>
-                    <button id="saveSettings">儲存設定</button>
-                    <button id="resetStats">重置統計</button>
+                    
+                    <button id="saveSettings">✅ 儲存設定</button>
+                    <button id="resetStats">🔄 重置統計</button>
+                    
+                    <div class="help-text">
+                        <p><strong>📝 需要幫助?</strong></p>
+                        <p>查看 <a href="https://github.com/107course/GAS" target="_blank">GitHub 倉庫</a> 的 DEPLOYMENT.md</p>
+                    </div>
                 </div>
             </div>
         </div>
