@@ -185,10 +185,39 @@ function generateOptionsFromAI(word) {
 
 /**
  * 呼叫 Google Gemini API (免費)
+ * 支援多個模型版本，優先嘗試較新的模型
  */
 function callGeminiAPI(word, apiKey) {
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    // 嘗試 gemini-pro 模型 (最穩定)
+    const models = [
+      'gemini-pro',
+      'gemini-1.5-pro-latest',
+      'gemini-1.5-flash-latest'
+    ];
+    
+    for (const model of models) {
+      const result = tryGeminiModel(word, apiKey, model);
+      if (result) {
+        Logger.log(`✅ 使用模型 ${model} 成功生成 ${word} 的選項`);
+        return result;
+      }
+    }
+    
+    Logger.log(`❌ 所有 Gemini 模型都失敗，請檢查 API Key 或模型可用性`);
+  } catch (error) {
+    Logger.log('Error calling Gemini API: ' + error);
+  }
+  
+  return null;
+}
+
+/**
+ * 嘗試使用特定的 Gemini 模型
+ */
+function tryGeminiModel(word, apiKey, model) {
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
     
     const payload = {
       contents: [
@@ -213,20 +242,24 @@ function callGeminiAPI(word, apiKey) {
     };
     
     const response = UrlFetchApp.fetch(url, options);
-    const result = JSON.parse(response.getContentText());
+    const responseCode = response.getResponseCode();
+    const responseText = response.getContentText();
     
-    if (response.getResponseCode() === 200 && result.candidates && result.candidates[0]) {
-      const content = result.candidates[0].content.parts[0].text;
-      // 提取 JSON (可能在文本中)
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
+    if (responseCode === 200) {
+      const result = JSON.parse(responseText);
+      if (result.candidates && result.candidates[0]) {
+        const content = result.candidates[0].content.parts[0].text;
+        // 提取 JSON (可能在文本中)
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          return JSON.parse(jsonMatch[0]);
+        }
       }
     } else {
-      Logger.log('Gemini API Error: ' + response.getContentText());
+      Logger.log(`模型 ${model} 返回錯誤 (${responseCode}): ${responseText}`);
     }
   } catch (error) {
-    Logger.log('Error calling Gemini API: ' + error);
+    Logger.log(`模型 ${model} 呼叫失敗: ${error}`);
   }
   
   return null;
