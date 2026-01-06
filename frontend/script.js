@@ -10,6 +10,7 @@ class QuizApp {
         
         // 狀態管理
         this.currentQuestion = null;
+        this.correctAnswer = null;  // 保存正確答案
         this.startTime = 0;
         this.timerInterval = null;
         this.isAnswered = false;
@@ -124,6 +125,9 @@ class QuizApp {
         // 顯示單字
         this.elements.currentWord.textContent = data.word;
         
+        // 保存正確答案（在打亂前）
+        this.correctAnswer = data.options[0];
+        
         // 打亂選項順序
         const shuffledOptions = this.shuffleArray([...data.options]);
         
@@ -158,13 +162,16 @@ class QuizApp {
         
         const timeTaken = Date.now() - this.startTime;
         const selectedOption = this.elements.optionBtns[index].dataset.option;
-        const isCorrect = selectedOption === this.currentQuestion.options[0];
+        
+        // 與保存的正確答案比對
+        const isCorrect = selectedOption === this.correctAnswer;
         
         // 視覺反饋
         this.elements.optionBtns[index].classList.add(isCorrect ? 'correct' : 'incorrect');
         this.elements.optionBtns.forEach((btn, i) => {
             btn.disabled = true;
-            if (btn.dataset.option === this.currentQuestion.options[0]) {
+            // 高亮顯示正確答案
+            if (btn.dataset.option === this.correctAnswer) {
                 btn.classList.add('correct');
             }
         });

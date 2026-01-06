@@ -75,8 +75,8 @@ function createJsonResponse(data, statusCode = 200) {
  * 獲取題目
  * 1. 從 Sheet 讀取所有單字和權重
  * 2. 根據權重隨機挑選
- * 3. 檢查選項快取
- * 4. 如果沒有快取，呼叫 AI 生成並保存
+ * 3. 返回快取的選項 (應該已在初始化時預生成)
+ * 4. 如果快取為空 (邊界情況)，則臨時生成
  */
 function handleGetQuestion() {
   const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_VOCABULARY);
@@ -87,7 +87,7 @@ function handleGetQuestion() {
     index: index + 2, // Sheet 中的實際行號 (從 2 開始)
     id: row[0],
     word: row[1],
-    optionsCache: row[2] ? JSON.parse(row[2]) : null,
+    optionsCache: row[2] ? tryParseJSON(row[2]) : null,
     weight: row[3] || 100,
     lastReviewed: row[4]
   }));
@@ -99,16 +99,16 @@ function handleGetQuestion() {
     return createJsonResponse({ error: 'No vocabulary found' }, 400);
   }
   
-  // 檢查選項快取
+  // 優先使用快取的選項 (應該已在初始化時預生成)
   let options = selectedItem.optionsCache;
   
-  if (!options) {
-    // 呼叫 AI 生成選項
+  if (!options || !options.correct) {
+    // 如果快取為空或損壞，臨時生成 (不應該發生)
+    Logger.log(`⚠️ 警告：${selectedItem.word} 的選項快取為空，臨時生成中...`);
     options = generateOptionsFromAI(selectedItem.word);
     
-    // 保存到 Sheet
+    // 保存到 Sheet 以備將來使用
     if (options) {
-      const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_VOCABULARY);
       sheet.getRange(selectedItem.index, 3).setValue(JSON.stringify(options)); // C 列
     }
   }
@@ -116,11 +116,29 @@ function handleGetQuestion() {
   // 記錄日誌 (可選)
   logQuestionServed(selectedItem.id, selectedItem.word);
   
-  return createJsonResponse({
-    id: selectedItem.id,
-    word: selectedItem.word,
-    options: [options.correct, ...options.wrong]
-  });
+  // 確保 options 有正確的結構
+  if (options && options.correct && options.wrong && options.wrong.length === 3) {
+    return createJsonResponse({
+      id: selectedItem.id,
+      word: selectedItem.word,
+      options: [options.correct, ...options.wrong]  // 第一個是正確答案
+    });
+  } else {
+    return createJsonResponse({ error: 'Invalid options format' }, 500);
+  }
+}
+
+/**
+ * 安全的 JSON 解析函數
+ */
+function tryParseJSON(jsonString) {
+  try {
+    if (!jsonString || typeof jsonString !== 'string') return null;
+    return JSON.parse(jsonString);
+  } catch (e) {
+    Logger.log('JSON parse error: ' + e);
+    return null;
+  }
 }
 
 /**
@@ -366,7 +384,7 @@ function logResult(id, isCorrect, timeTaken) {
 // ============================================
 
 /**
- * 首次設定：建立工作表結構
+ * 首次設定：建立工作表結構並預生成所有選項
  * 在 GAS 編輯器中手動執行一次
  */
 function initializeSpreadsheet() {
@@ -380,12 +398,52 @@ function initializeSpreadsheet() {
   vocabSheet.clear();
   vocabSheet.appendRow(['ID', 'Word', 'Options_Cache', 'Weight', 'Last_Reviewed']);
   
-  // 新增示例單字
-  vocabSheet.appendRow(['1', 'Ubiquitous', '', '100', '']);
-  vocabSheet.appendRow(['2', 'Ephemeral', '', '100', '']);
-  vocabSheet.appendRow(['3', 'Pragmatic', '', '100', '']);
-  vocabSheet.appendRow(['4', 'Eloquent', '', '100', '']);
-  vocabSheet.appendRow(['5', 'Serendipity', '', '100', '']);
+  // 示例單字清單
+  const words = [
+    { id: '1', word: 'Ubiquitous' },
+    { id: '2', word: 'Ephemeral' },
+    { id: '3', word: 'Pragmatic' },
+    { id: '4', word: 'Eloquent' },
+    { id: '5', word: 'Serendipity' },
+    { id: '6', word: 'Melancholy' },
+    { id: '7', word: 'Tenacious' },
+    { id: '8', word: 'Enigmatic' },
+    { id: '9', word: 'Altruistic' },
+    { id: '10', word: 'Juxtapose' }
+  ];
+  
+  // 為每個單字預生成選項並保存
+  Logger.log('開始預生成選項...');
+  let generatedCount = 0;
+  
+  for (const item of words) {
+    const options = generateOptionsFromAI(item.word);
+    
+    if (options) {
+      vocabSheet.appendRow([
+        item.id, 
+        item.word, 
+        JSON.stringify(options),  // 立即保存選項快取
+        '100', 
+        ''
+      ]);
+      generatedCount++;
+      Logger.log(`✅ 已生成 ${item.word} 的選項`);
+    } else {
+      // 如果 API 失敗，先添加空白選項，稍後手動補充
+      vocabSheet.appendRow([
+        item.id, 
+        item.word, 
+        '', 
+        '100', 
+        ''
+      ]);
+      Logger.log(`⚠️ ${item.word} 的選項生成失敗，請檢查 API Key`);
+    }
+    
+    // 每個 API 呼叫間隔 1 秒，避免超過速率限制
+    Utilities.sleep(1000);
+  }
   
   // 建立 Logs 工作表
   let logsSheet = spreadsheet.getSheetByName(SHEET_LOGS);
@@ -395,5 +453,5 @@ function initializeSpreadsheet() {
   logsSheet.clear();
   logsSheet.appendRow(['Timestamp', 'Word_ID', 'Word', 'Event', 'Time_Taken', 'Result']);
   
-  Logger.log('Spreadsheet initialized successfully');
+  Logger.log(`✅ Spreadsheet 初始化完成！成功生成 ${generatedCount}/${words.length} 個單字的選項`);
 }
