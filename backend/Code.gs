@@ -185,39 +185,25 @@ function generateOptionsFromAI(word) {
 
 /**
  * 呼叫 Google Gemini API (免費)
- * 支援多個模型版本，優先嘗試較新的模型
+ * 嘗試多個可能的端點和模型名稱
  */
 function callGeminiAPI(word, apiKey) {
   try {
-    // 嘗試 gemini-pro 模型 (最穩定)
-    const models = [
-      'gemini-pro',
-      'gemini-1.5-pro-latest',
-      'gemini-1.5-flash-latest'
-    ];
-    
-    for (const model of models) {
-      const result = tryGeminiModel(word, apiKey, model);
-      if (result) {
-        Logger.log(`✅ 使用模型 ${model} 成功生成 ${word} 的選項`);
-        return result;
+    // 嘗試不同的 API 端點和模型組合
+    const endpoints = [
+      {
+        url: `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent?key=${apiKey}`,
+        model: 'gemini-1.5-pro (v1)'
+      },
+      {
+        url: `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        model: 'gemini-1.5-flash (v1)'
+      },
+      {
+        url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
+        model: 'gemini-pro (v1beta)'
       }
-    }
-    
-    Logger.log(`❌ 所有 Gemini 模型都失敗，請檢查 API Key 或模型可用性`);
-  } catch (error) {
-    Logger.log('Error calling Gemini API: ' + error);
-  }
-  
-  return null;
-}
-
-/**
- * 嘗試使用特定的 Gemini 模型
- */
-function tryGeminiModel(word, apiKey, model) {
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
+    ];
     
     const payload = {
       contents: [
@@ -232,34 +218,43 @@ function tryGeminiModel(word, apiKey, model) {
       ]
     };
     
-    const options = {
-      method: 'post',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      payload: JSON.stringify(payload),
-      muteHttpExceptions: true
-    };
-    
-    const response = UrlFetchApp.fetch(url, options);
-    const responseCode = response.getResponseCode();
-    const responseText = response.getContentText();
-    
-    if (responseCode === 200) {
-      const result = JSON.parse(responseText);
-      if (result.candidates && result.candidates[0]) {
-        const content = result.candidates[0].content.parts[0].text;
-        // 提取 JSON (可能在文本中)
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          return JSON.parse(jsonMatch[0]);
+    for (const endpoint of endpoints) {
+      try {
+        const options = {
+          method: 'post',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          payload: JSON.stringify(payload),
+          muteHttpExceptions: true
+        };
+        
+        const response = UrlFetchApp.fetch(endpoint.url, options);
+        const responseCode = response.getResponseCode();
+        const responseText = response.getContentText();
+        
+        if (responseCode === 200) {
+          const result = JSON.parse(responseText);
+          if (result.candidates && result.candidates[0] && result.candidates[0].content && result.candidates[0].content.parts) {
+            const content = result.candidates[0].content.parts[0].text;
+            const jsonMatch = content.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              const parsed = JSON.parse(jsonMatch[0]);
+              if (parsed.correct && parsed.wrong && parsed.wrong.length === 3) {
+                Logger.log(`✅ 使用 ${endpoint.model} 成功生成 ${word} 的選項`);
+                return parsed;
+              }
+            }
+          }
         }
+      } catch (e) {
+        Logger.log(`端點 ${endpoint.model} 失敗: ${e}`);
       }
-    } else {
-      Logger.log(`模型 ${model} 返回錯誤 (${responseCode}): ${responseText}`);
     }
+    
+    Logger.log(`❌ 所有 Gemini 端點都失敗，使用本地選項作為備用`);
   } catch (error) {
-    Logger.log(`模型 ${model} 呼叫失敗: ${error}`);
+    Logger.log('Error calling Gemini API: ' + error);
   }
   
   return null;
@@ -417,6 +412,23 @@ function logResult(id, isCorrect, timeTaken) {
 // ============================================
 
 /**
+ * 本地備用選項 (當 AI API 失敗時使用)
+ * 可以稍後透過 updateVocabularyOptions() 函數更新為 AI 生成的選項
+ */
+const FALLBACK_OPTIONS = {
+  'Ubiquitous': { correct: '無所不在的', wrong: ['稀有的', '昂貴的', '美味的'] },
+  'Ephemeral': { correct: '短暫的', wrong: ['永恆的', '固定的', '堅實的'] },
+  'Pragmatic': { correct: '實用的', wrong: ['理想的', '浪漫的', '抽象的'] },
+  'Eloquent': { correct: '雄辯的', wrong: ['沉默的', '啞巴的', '簡潔的'] },
+  'Serendipity': { correct: '幸運巧合', wrong: ['悲傷', '計劃', '偶然'] },
+  'Melancholy': { correct: '憂鬱的', wrong: ['快樂的', '興奮的', '平靜的'] },
+  'Tenacious': { correct: '頑強的', wrong: ['軟弱的', '放棄的', '靈活的'] },
+  'Enigmatic': { correct: '神秘的', wrong: ['清楚的', '明顯的', '簡單的'] },
+  'Altruistic': { correct: '利他的', wrong: ['自私的', '貪婪的', '冷漠的'] },
+  'Juxtapose': { correct: '並列對比', wrong: ['分離', '混合', '隱藏'] }
+};
+
+/**
  * 首次設定：建立工作表結構並預生成所有選項
  * 在 GAS 編輯器中手動執行一次
  */
@@ -448,9 +460,17 @@ function initializeSpreadsheet() {
   // 為每個單字預生成選項並保存
   Logger.log('開始預生成選項...');
   let generatedCount = 0;
+  let fallbackCount = 0;
   
   for (const item of words) {
-    const options = generateOptionsFromAI(item.word);
+    let options = generateOptionsFromAI(item.word);
+    
+    // 如果 AI 失敗，使用本地備用選項
+    if (!options) {
+      options = FALLBACK_OPTIONS[item.word];
+      fallbackCount++;
+      Logger.log(`⚠️ ${item.word} 使用本地備用選項`);
+    }
     
     if (options) {
       vocabSheet.appendRow([
@@ -461,17 +481,7 @@ function initializeSpreadsheet() {
         ''
       ]);
       generatedCount++;
-      Logger.log(`✅ 已生成 ${item.word} 的選項`);
-    } else {
-      // 如果 API 失敗，先添加空白選項，稍後手動補充
-      vocabSheet.appendRow([
-        item.id, 
-        item.word, 
-        '', 
-        '100', 
-        ''
-      ]);
-      Logger.log(`⚠️ ${item.word} 的選項生成失敗，請檢查 API Key`);
+      Logger.log(`✅ 已處理 ${item.word}`);
     }
     
     // 每個 API 呼叫間隔 1 秒，避免超過速率限制
@@ -486,5 +496,79 @@ function initializeSpreadsheet() {
   logsSheet.clear();
   logsSheet.appendRow(['Timestamp', 'Word_ID', 'Word', 'Event', 'Time_Taken', 'Result']);
   
-  Logger.log(`✅ Spreadsheet 初始化完成！成功生成 ${generatedCount}/${words.length} 個單字的選項`);
+  Logger.log(`✅ Spreadsheet 初始化完成！`);
+  Logger.log(`   - 成功生成: ${generatedCount - fallbackCount} 個`);
+  Logger.log(`   - 使用備用: ${fallbackCount} 個`);
+  Logger.log(`   - 總計: ${generatedCount}/${words.length} 個單字`);
+}
+
+/**
+ * 手動更新單字的選項 (當 API 正常時執行)
+ * 例如: updateVocabularyOptions('1')
+ */
+function updateVocabularyOptions(wordId) {
+  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_VOCABULARY);
+  const data = sheet.getDataRange().getValues();
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] == wordId) {
+      const word = data[i][1];
+      const options = generateOptionsFromAI(word);
+      
+      if (options) {
+        sheet.getRange(i + 1, 3).setValue(JSON.stringify(options));
+        Logger.log(`✅ 已更新 ${word} 的 AI 生成選項`);
+      } else {
+        Logger.log(`❌ 無法生成 ${word} 的選項`);
+      }
+      break;
+    }
+  }
+}
+
+/**
+ * 批量更新所有單字的選項 (當 API 正常時執行)
+ * 這個函數會為所有選項為空的單字生成選項
+ */
+function updateAllVocabularyOptions() {
+  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_VOCABULARY);
+  const data = sheet.getDataRange().getValues();
+  let updatedCount = 0;
+  
+  Logger.log('開始批量更新選項...');
+  
+  for (let i = 1; i < data.length; i++) {
+    const id = data[i][0];
+    const word = data[i][1];
+    const optionsCache = data[i][2];
+    
+    // 只更新為空或不是有效 JSON 的選項
+    if (!optionsCache || !isValidOptions(optionsCache)) {
+      const options = generateOptionsFromAI(word);
+      
+      if (options) {
+        sheet.getRange(i + 1, 3).setValue(JSON.stringify(options));
+        updatedCount++;
+        Logger.log(`✅ 已更新 ${word} 的 AI 生成選項`);
+      } else {
+        Logger.log(`❌ 無法生成 ${word} 的選項`);
+      }
+      
+      Utilities.sleep(1000);  // 避免超過 API 速率限制
+    }
+  }
+  
+  Logger.log(`✅ 批量更新完成！共更新 ${updatedCount} 個單字`);
+}
+
+/**
+ * 檢驗選項是否有效
+ */
+function isValidOptions(jsonString) {
+  try {
+    const options = JSON.parse(jsonString);
+    return options && options.correct && options.wrong && options.wrong.length === 3;
+  } catch (e) {
+    return false;
+  }
 }
