@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 智慧背單字</title>
+    <link rel="stylesheet" href="frontend/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Loading State -->
+        <div id="loadingState" class="state active">
+            <div class="container">
+                <div class="spinner"></div>
+                <p class="loading-text">正在從雲端題庫載入...</p>
+            </div>
+        </div>
+
+        <!-- Quiz State -->
+        <div id="quizState" class="state">
+            <div class="container">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                
+                <div class="timer-container">
+                    <span class="timer" id="timer">0:00</span>
+                </div>
+
+                <div class="word-display">
+                    <h1 id="currentWord">Loading...</h1>
+                </div>
+
+                <div class="options-container">
+                    <button class="option-btn" data-index="0"></button>
+                    <button class="option-btn" data-index="1"></button>
+                    <button class="option-btn" data-index="2"></button>
+                    <button class="option-btn" data-index="3"></button>
+                </div>
+
+                <div class="stats">
+                    <p>正確: <span id="correctCount">0</span> | 錯誤: <span id="wrongCount">0</span></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Feedback State -->
+        <div id="feedbackState" class="state">
+            <div class="container">
+                <div class="feedback-box">
+                    <div class="feedback-icon" id="feedbackIcon">✅</div>
+                    <p class="feedback-text" id="feedbackText">答對！</p>
+                    <p class="feedback-details" id="feedbackDetails">耗時: 1.5 秒</p>
+                    <p class="next-text">2 秒後載入下一題...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div class="settings-btn">
+            <button id="settingsToggle">⚙️</button>
+        </div>
+
+        <div id="settingsModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>⚙️ 初始設定</h2>
+                    <button class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="setup-instruction">
+                        <h3>首次使用步驟：</h3>
+                        <ol>
+                            <li>部署 Google Apps Script 後端 (詳見 GitHub DEPLOYMENT.md)</li>
+                            <li>複製 GAS Web App URL</li>
+                            <li>貼到下方輸入框</li>
+                            <li>點擊「儲存設定」</li>
+                        </ol>
+                    </div>
+                    
+                    <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;">
+                    
+                    <label>
+                        <strong>🔗 GAS Web App URL:</strong>
+                        <input type="text" id="gasUrl" placeholder="https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec">
+                    </label>
+                    
+                    <button id="saveSettings">✅ 儲存設定</button>
+                    <button id="resetStats">🔄 重置統計</button>
+                    
+                    <div class="help-text">
+                        <p><strong>📝 需要幫助?</strong></p>
+                        <p>查看 <a href="https://github.com/107course/GAS" target="_blank">GitHub 倉庫</a> 的 DEPLOYMENT.md</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="frontend/script.js"></script>
+</body>
+</html>
